@@ -1,6 +1,7 @@
 package tv.teads.analytics.reporting
 
-import java.util.UUID
+import java.nio.ByteBuffer
+import java.util.{Base64, UUID}
 
 import cats.effect.ExitCode
 import org.http4s.implicits._
@@ -30,13 +31,26 @@ object Main extends ManagedApp {
         .drain
     }
 
+  private def uuidToString(uuid: UUID): String = {
+    val bytes = ByteBuffer
+      .allocate(java.lang.Long.BYTES * 2)
+      .putLong(uuid.getMostSignificantBits)
+      .putLong(uuid.getLeastSignificantBits)
+      .array()
+
+    Base64
+      .getUrlEncoder
+      .withoutPadding
+      .encodeToString(bytes)
+  }
+
   def provideContext[T](task: AppTask[T]): AppTask[T] =
     task.provideSomeM[AppEnv, Throwable](
       for {
         appEnv <- ZIO.environment[AppEnv]
         uuid   <- ZIO.effectTotal(UUID.randomUUID())
       } yield new Clock with Logger with LoggingContextEnv with DoobieTodoRepositoryEnv {
-        override val loggingContext: LoggingContext            = LoggingContext.RequestId(uuid.toString)
+        override val loggingContext: LoggingContext            = LoggingContext.RequestId(uuidToString(uuid))
         override val logger: Logger.Service[LoggingContextEnv] = appEnv.logger
         override val clock: Clock.Service[Any]                 = appEnv.clock
         override val db: DoobieTodoRepository                  = appEnv.db
@@ -46,10 +60,11 @@ object Main extends ManagedApp {
   override def run(args: List[String]): ZManaged[ZEnv, Nothing, Int] =
     (for {
       transactor <- DoobieRepository
-                     .mkTransactor(DBConfig("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "sas", "", ""))
+                     .mkTransactor(DBConfig("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "sa", "", ""))
                      .orDie
-      doobieTodoRepository <- DoobieTodoRepository.withDoobieTodoRepositoryManaged(transactor)
-      _                    <- runHttp(8080).provide(new AppEnv.Live(doobieTodoRepository)).toManaged_
+      _ <- runHttp(8080)
+            .provide(new AppEnv.Live(DoobieTodoRepository.withDoobieTodoRepositoryManaged(transactor)))
+            .toManaged_
     } yield 0)
       .foldM(
         err => putStrLn(s"Execution failed with: $err").as(1).toManaged_,

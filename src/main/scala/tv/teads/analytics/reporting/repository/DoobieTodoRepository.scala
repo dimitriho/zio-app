@@ -12,7 +12,7 @@ trait DoobieTodoRepositoryEnv {
 }
 
 trait DoobieTodoRepository {
-  val foo: Task[List[Int]]
+  val fetchIntList: Task[List[Int]]
 }
 
 object DoobieTodoRepository {
@@ -20,11 +20,15 @@ object DoobieTodoRepository {
 
   def withDoobieTodoRepositoryManaged(
       transactor: Transactor[Task],
-  ): ZManaged[Any, Nothing, DoobieTodoRepository] =
-    ZManaged.succeed(new DoobieTodoRepository {
-      override val foo: Task[List[Int]] =
-        sql"SELECT 42".query[Int].to[List].transact(transactor)
-    })
+  ): DoobieTodoRepository =
+    new DoobieTodoRepository {
+      override val fetchIntList: Task[List[Int]] =
+        sql"SELECT 42"
+          .query[Int]
+          .to[List]
+          .transact(transactor)
+      //          .filterOrFail(_.isEmpty)(new Exception("This is a stupid failure"))
+    }
 }
 
 final case class DBConfig(
