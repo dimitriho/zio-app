@@ -23,7 +23,7 @@ object DoobieTodoRepository {
   ): DoobieTodoRepository =
     new DoobieTodoRepository {
       override val fetchIntList: Task[List[Int]] =
-        sql"SELECT 42"
+        sql"SELECT a 42"
           .query[Int]
           .to[List]
           .transact(transactor)
